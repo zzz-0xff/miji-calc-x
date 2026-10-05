@@ -1,0 +1,25 @@
+{
+  "_说明": [
+    "本地 LLM 配置。已在 .gitignore 里，不会被提交。",
+    "最省事的办法：双击 配置API.bat，它会问你几个问题然后帮你写好这个文件。",
+    "想自己填也行 —— 详细说明见 docs/AI_SETUP.md"
+  ],
+
+  "base_url": "https://api.deepseek.com",
+  "model": "deepseek-chat",
+  "key": "sk-在这里填你的key",
+
+  "_base_url_怎么填": [
+    "代码会在你填的地址后面接 /chat/completions",
+    "  https://api.deepseek.com     -> https://api.deepseek.com/chat/completions     OK",
+    "  https://api.openai.com/v1    -> https://api.openai.com/v1/chat/completions    OK",
+    "  https://api.openai.com       -> 会 404，少了 /v1",
+    "看服务商文档里 POST /chat/completions 前面那段，就是 base_url"
+  ],
+
+  "_想接别的模型": [
+    "任何 OpenAI 兼容接口都能用，换成对应的 base_url 和 model 即可。",
+    "本地模型（Ollama / LM Studio）把 base_url 指向本机，key 随便填个非空字符。",
+    "想同时比几个模型，改 tools/models.json。"
+  ]
+}
