@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>计算者-X 蓝牙桥</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:14px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+         background:#12141a; color:#e8eaf0; font-size:16px; }
+  h1 { font-size:18px; margin:0 0 10px; }
+  #status { padding:8px 10px; border-radius:8px; background:#1d2130; margin-bottom:10px; font-size:14px; }
+  #status.ok { background:#14361f; }
+  #status.bad { background:#3a1a1e; }
+  button { font-size:16px; padding:12px 14px; margin:0 6px 8px 0; border:0; border-radius:10px;
+           background:#242a3a; color:#e8eaf0; }
+  button:active { background:#39425c; }
+  #connect { background:#2d6cdf; color:#fff; width:100%; font-size:17px; padding:14px; }
+  .grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin:10px 0; }
+  .grid button { margin:0; padding:10px 0; font-size:15px; }
+  .lbl { font-size:13px; color:#9aa3b8; margin:12px 0 4px; }
+  pre { background:#0c0e13; padding:10px; border-radius:8px; font-size:11px; line-height:1.5;
+        height:240px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  .big { font-size:15px; padding:14px 0; }
+  #state { font-size:13px; color:#9aa3b8; margin-top:8px; }
+</style>
+</head>
+<body>
+<h1>计算者-X 蓝牙桥</h1>
+<div id="status">未连接</div>
+<button id="connect">① 连接 mizzzee_0007</button>
+
+<div class="lbl">停止 / 单参数 1-9</div>
+<div class="grid" id="vals"></div>
+
+<div class="lbl">固定组合</div>
+<div class="grid">
+  <button data-cmd="4"  data-p="1"  class="big">加热开</button>
+  <button data-cmd="4"  data-p="0"  class="big">加热关</button>
+  <button data-cmd="10" data-p="1"  class="big">计数开</button>
+  <button data-cmd="10" data-p="0"  class="big">计数关</button>
+  <button data-cmd="13" data-p="1"  class="big">计数清</button>
+</div>
+
+<div class="lbl">五路模式 cmd 0x06 [伸缩,震动,吸吮,旋转,加热]</div>
+<div class="grid">
+  <button data-cmd="6" data-p="1,0,0,0,0">伸缩1</button>
+  <button data-cmd="6" data-p="2,0,0,0,0">伸缩2</button>
+  <button data-cmd="6" data-p="3,0,0,0,0">伸缩3</button>
+  <button data-cmd="6" data-p="0,1,0,0,0">震动1</button>
+  <button data-cmd="6" data-p="0,9,0,0,0">震动9</button>
+</div>
+<button id="stop" class="big" style="width:100%;background:#7a2530;color:#fff">停止（发 0）</button>
+<div id="state"></div>
+
+<div class="lbl">日志</div>
+<pre id="log"></pre>
+
+<script>
+const SERVICE = 0xFFE0, CHAR = 0xFFE1;
+let chr = null, running = false, cmd = 0x08, payload = [0], hz = 10, sent = 0;
+
+const $ = (s) => document.querySelector(s);
+const logEl = $('#log');
+
+function log(msg) {
+  const line = new Date().toLocaleTimeString() + '  ' + msg;
+  logEl.textContent = line + '\n' + logEl.textContent;
+  fetch('/api/log', { method: 'POST', body: line }).catch(() => {});
+}
+
+function aaFrame(c, p) {
+  const b = [0xAA, c & 0xFF, p.length & 0xFF, ...p.map(x => x & 0xFF)];
+  b.push(b.reduce((a, x) => a + x, 0) & 0xFF);
+  return new Uint8Array(b);
+}
+
+function hex(a) {
+  return Array.from(a).map(x => x.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+}
+
+// ---- 参数按钮 ----
+const vals = $('#vals');
+for (let v = 0; v <= 9; v++) {
+  const b = document.createElement('button');
+  b.textContent = v === 0 ? '停' : String(v);
+  b.onclick = () => set(0x08, [v]);
+  vals.appendChild(b);
+}
+
+async function set(c, p) {
+  cmd = c; payload = p; running = true;
+  $('#state').textContent = `目标: cmd=0x${c.toString(16).padStart(2, '0')} payload=[${p}]`;
+  try {
+    const r = await fetch('/api/set', {
+      method: 'POST',
+      body: JSON.stringify({ running: true, cmd: c, payload: p, hz })
+    });
+    log(`设置 cmd=0x${c.toString(16)} payload=[${p}]`);
+  } catch (e) { log('设置失败 ' + e); }
+}
+
+$('#stop').onclick = () => {
+  running = false;
+  $('#state').textContent = '已停止';
+  fetch('/api/set', { method: 'POST', body: JSON.stringify({ running: false }) }).catch(() => {});
+  log('停止');
+};
+
+document.querySelectorAll('button[data-cmd]').forEach(b => {
+  b.onclick = () => set(parseInt(b.dataset.cmd, 10), b.dataset.p.split(',').map(Number));
+});
+
+// ---- 连接 ----
+$('#connect').onclick = async () => {
+  try {
+    log('请求设备（namePrefix=mizzzee）...');
+    const dev = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'mizzzee' }, { namePrefix: 'MIZZZEE' }, { namePrefix: 'MizzZee' }],
+      optionalServices: [SERVICE]
+    });
+    log('选中: ' + (dev.name || dev.id));
+    const server = await dev.gatt.connect();
+    const svc = await server.getPrimaryService(SERVICE);
+    chr = await svc.getCharacteristic(CHAR);
+    log('拿到 FFE1, 属性=' + Object.keys(chr.properties).filter(k => chr.properties[k]).join('/'));
+    try {
+      await chr.startNotifications();
+      chr.addEventListener('characteristicvaluechanged', (e) => {
+        const v = new Uint8Array(e.target.value.buffer);
+        fetch('/api/notify', { method: 'POST', body: hex(v) }).catch(() => {});
+      });
+      log('已订阅通知');
+    } catch (e) { log('订阅通知失败: ' + e); }
+    $('#status').textContent = '已连接  ' + (dev.name || '');
+    $('#status').className = 'ok';
+    dev.addEventListener('gattserverdisconnected', () => {
+      chr = null; $('#status').textContent = '连接断开（重新点①）'; $('#status').className = 'bad';
+      log('gattserverdisconnected');
+    });
+  } catch (e) {
+    $('#status').textContent = '连接失败: ' + e;
+    $('#status').className = 'bad';
+    log('连接失败: ' + e);
+  }
+};
+
+// ---- 状态轮询（AI 通过这里控制）----
+setInterval(async () => {
+  try {
+    const st = await (await fetch('/api/state')).json();
+    running = st.running; cmd = st.cmd; payload = st.payload; hz = st.hz || 10;
+  } catch (e) { /* ignore */ }
+}, 300);
+
+// ---- 发送循环（默认 10 Hz 流式写入）----
+let fails = 0;
+async function pump() {
+  if (chr && running) {
+    try {
+      await chr.writeValueWithoutResponse(aaFrame(cmd, payload));
+      sent++;
+      if (sent % 10 === 1) $('#state').textContent =
+        `发送中 cmd=0x${cmd.toString(16).padStart(2, '0')} payload=[${payload}] 共${sent}帧`;
+      fails = 0;
+    } catch (e) {
+      fails++;
+      if (fails <= 3) log('写失败: ' + e);
+    }
+  }
+  setTimeout(pump, Math.max(20, Math.round(1000 / hz)));
+}
+pump();
+
+// 自检：报告环境
+log('BLE=' + (navigator.bluetooth ? 'yes' : 'NO') + ' secure=' + window.isSecureContext +
+    ' UA=' + navigator.userAgent.slice(0, 80));
+</script>
+</body>
+</html>
