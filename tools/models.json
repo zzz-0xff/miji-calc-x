@@ -1,0 +1,23 @@
+[
+  {
+    "name": "DeepSeek",
+    "base": "https://api.deepseek.com",
+    "model": "deepseek-chat",
+    "envs": ["LLM_API_KEY", "DEEPSEEK_API_KEY"],
+    "_key 在哪拿": "https://platform.deepseek.com/api_keys"
+  },
+  {
+    "name": "OpenAI",
+    "base": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini",
+    "envs": ["LLM_API_KEY", "OPENAI_API_KEY"],
+    "_key 在哪拿": "https://platform.openai.com/api-keys"
+  },
+  {
+    "name": "本地 Ollama",
+    "base": "http://127.0.0.1:11434/v1",
+    "model": "qwen2.5",
+    "envs": ["LLM_API_KEY"],
+    "_key 在哪拿": "本地不用真 key，环境变量随便填个非空值"
+  }
+]
